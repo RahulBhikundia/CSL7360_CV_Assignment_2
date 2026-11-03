@@ -87,7 +87,7 @@ model = SmallUNet().to(device)
 
 model.load_state_dict(
     torch.load(
-        "checkpoints/best_model_192.pth",
+        "checkpoints/best_model_4.pth",
         map_location=device,
         weights_only=True
     )

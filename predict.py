@@ -34,6 +34,8 @@ def main():
     )
     model.load_state_dict(checkpoint)
     model.eval()
+    with torch.no_grad():
+        model = torch.jit.optimize_for_inference(torch.jit.trace(model, torch.randn(1, 3, 256, 256)))
 
     # Read and resize the image before timing
     image = cv2.imread(args.image)

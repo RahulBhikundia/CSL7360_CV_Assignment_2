@@ -1,290 +1,197 @@
 # Cost-Efficient Image Segmentation
 
-A lightweight deep learning-based image segmentation system that aims to balance segmentation quality, inference speed, and model size under computational constraints.
+A lightweight deep learning-based image segmentation system that balances segmentation quality, single-core CPU inference speed, and model storage footprint under strict computational constraints.
 
-The project implements a compact **SmallUNet** architecture using PyTorch, trained on the DUTS training dataset and evaluated on the DUTS validation and test datasets. The model is additionally tested on personally captured images to examine its performance on real-world scenes.
+The project implements a compact **SmallUNet** architecture from scratch using PyTorch, trained on the DUTS training dataset (`DUTS-TR`) and evaluated on the held-out validation split and the official `DUTS-TE` test benchmark. The model is additionally tested on six personally captured campus and hostel photographs to examine its generalization on real-world scenes.
 
-A trained model checkpoint is included, allowing users to perform segmentation on their own images without having to reproduce the training process.
+A trained model checkpoint (`checkpoints/best_model_4.pth`) is included, allowing users to perform segmentation on their own images without reproducing the training process.
 
----
+## Directory Structure
 
-## 📁 Directory Structure
-
-```text
+```
 Assignment 2/
 ├── captured/
 │   ├── original/              # Original personally captured images
-│   ├── images_256/            # Resized input images
-│   └── masks_256/             # Corresponding ground-truth masks
+│   ├── images_256/            # Resized 256 x 256 input images (PNG)
+│   └── masks_256/             # Corresponding 256 x 256 ground-truth masks (PNG)
 │
 ├── checkpoints/
-│   └── best_model_192.pth     # Trained model checkpoint
+│   └── best_model_4.pth       # Trained model checkpoint (129,326 bytes)
 │
 ├── datasets/
 │   ├── DUTS-TR/
 │   └── DUTS-TE/
 │
 ├── predictions/               # Generated segmentation masks
-├── ground_truth/              # Ground-truth masks for evaluation
-├── visualizations/            # Prediction and ground-truth comparisons
+├── ground_truth/              # Original manually annotated masks
+├── visualizations/            # 4-panel prediction and ground-truth comparisons
 │
 ├── dataset.py                 # Dataset loading and preprocessing
-├── model.py                   # SmallUNet architecture
-├── train.py                   # Model training
-├── predict.py                 # Inference on individual images
-├── evaluate.py                # Validation evaluation
-├── evaluation_test.py         # DUTS-TE evaluation
-├── benchmark.py               # CPU inference benchmarking
-├── visualize.py               # Segmentation visualizations
-├── prepare_captured.py        # Preparation of captured images
+├── model.py                   # SmallUNet architecture (15,949 parameters)
+├── train.py                   # Model training (50 epochs with early stopping)
+├── predict.py                 # Single-image CLI inference and timing
+├── evaluate.py                # Validation set evaluation
+├── evaluation_test.py         # Official DUTS-TE test set evaluation
+├── benchmark.py               # Single-threaded CPU inference benchmark
+├── visualize.py               # Personal photo evaluation and 4-panel overlays
+├── prepare_captured.py        # Preparation of captured images and masks
 │
 ├── requirements.txt
 ├── Report.tex
 ├── Report.pdf
 └── README.md
+
+
 ```
 
----
-
-## 🧠 Model Architecture & Methodology
-
-The project uses a lightweight U-Net-based segmentation architecture designed to reduce computational requirements while retaining useful spatial information.
+## Model Architecture & Methodology
 
 ### 1. SmallUNet
 
-The network follows an encoder-decoder structure:
+The network follows a 3-stage U-Net encoder-decoder structure built with depthwise-separable convolutions (`3x3` depthwise + `1x1` pointwise), batch normalization, in-place ReLU activations, `2x2` max pooling, and `2x` bilinear upsampling:
 
-- **Encoder:** Extracts increasingly abstract visual features while reducing spatial dimensions.
-- **Bottleneck:** Processes the high-level feature representation.
-- **Decoder:** Recovers spatial resolution to generate a pixel-level segmentation map.
-- **Skip Connections:** Transfer spatial information from encoder stages to corresponding decoder stages.
+* **Encoder (`enc1`–`enc3`):** Progressively extracts visual features across channel widths `3 -> 8 -> 16 -> 32` while downsampling spatial dimensions from `256 x 256` to `32 x 32`.
 
-Depthwise-separable convolutions are used to reduce the number of learnable parameters and computational cost.
+* **Bottleneck:** Processes the `32 x 32` feature map (`32 -> 48` channels).
 
-The model internally processes images at a resolution of 192 × 192 and produces segmentation predictions at 256 × 256.
+* **Decoder (`dec1`–`dec3`) & Skip Connections:** Bilinearly upsamples features and concatenates skip connections from the encoder (`80 -> 32`, `48 -> 16`, and `24 -> 8` channels), followed by a `1 x 1` output convolution (`8 -> 1` channel) at full `256 x 256` resolution.
+
+* **Total Trainable Parameters:** **15,949** (`129,326 bytes` on disk).
 
 ### 2. Training Configuration
 
-| Parameter | Configuration |
-|---|---|
-| Training dataset | DUTS-TR |
-| Training samples | 9,497 |
-| Validation samples | 1,056 |
-| Train-validation split | 90:10 |
-| Random seed | 42 |
-| Batch size | 16 |
-| Loss function | BCEWithLogitsLoss |
-| Optimizer | Adam |
-| Learning rate | 0.001 |
-| Training epochs | 10 |
+| Parameter | Configuration | 
+| ----- | ----- | 
+| Training dataset | DUTS-TR | 
+| Training samples | 9,497 | 
+| Validation samples | 1,056 | 
+| Train-validation split | 90:10 (Seed = 42) | 
+| Input / Operating resolution | 256 × 256 | 
+| Batch size | 16 | 
+| Loss function | BCEWithLogitsLoss | 
+| Optimizer | Adam (lr = 0.001) | 
+| Max epochs / Early stopping | 50 epochs (patience = 7) | 
+| Best validation loss | 0.2603 (Epoch 44) | 
 
-The best-performing checkpoint on the validation set is saved for subsequent evaluation and inference.
+## Requirements & Installation
 
----
+* **Python:** 3.12 recommended
 
-## ⚙️ Requirements & Installation
+* **Framework:** PyTorch 2.5.1
 
-The project uses Python and PyTorch for model implementation, training, and inference.
-
-- **Python:** 3.12 recommended
-- **Framework:** PyTorch 2.5.1
-- **Image processing:** OpenCV, NumPy, Pillow
+* **Image processing:** OpenCV, NumPy, Pillow, Matplotlib
 
 ### 1. Create a Virtual Environment
 
-Navigate to the project directory and create an isolated Python environment.
-
 **Windows (Git Bash):**
 
-```bash
+```
 python -m venv .venv
 source .venv/Scripts/activate
+
+
 ```
 
 **Windows (PowerShell):**
 
-```powershell
+```
 python -m venv .venv
 .venv\Scripts\Activate.ps1
+
+
 ```
 
 ### 2. Install Dependencies
 
-Upgrade pip:
-
-```bash
-python -m pip install --upgrade pip
 ```
-
-Install the required packages:
-
-```bash
+python -m pip install --upgrade pip
 pip install -r requirements.txt
+
+
 ```
 
 ### 3. Install PyTorch
 
-Install the appropriate PyTorch build for your hardware.
-
 **CPU-only installation:**
 
-```bash
+```
 pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu
+
+
 ```
 
 **NVIDIA GPU installation (CUDA 12.1):**
 
-```bash
+```
 pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
+
+
 ```
 
-For other configurations, refer to the [official PyTorch installation guide](https://pytorch.org/get-started/locally/).
+## How to Run
 
-Verify the installation:
+### 1. Perform Segmentation on an Individual Image
 
-```bash
-python -c "import torch; print(torch.__version__); print('CUDA available:', torch.cuda.is_available())"
 ```
+python predict.py --image captured/original/photo1.jpeg --out predictions/predicted_mask1.png
 
----
 
-## 🚀 How to Run
-
-### 1. Perform Segmentation on Your Own Image
-
-The repository includes the trained model checkpoint:
-
-```text
-checkpoints/best_model_192.pth
 ```
-
-Users can directly perform inference without downloading the DUTS datasets or training the model.
-
-1. Place the input image somewhere accessible from the project directory.
-2. Execute the prediction script:
-
-```bash
-python predict.py --image path/to/input.jpg --out predictions/output_mask.png
-```
-
-3. The generated segmentation mask will be saved at:
-
-```text
-predictions/output_mask.png
-```
-
-The output is a binary PNG image with:
-
-- `255`: Foreground
-- `0`: Background
-
-The script performs CPU inference and reports the average inference time and checkpoint size.
 
 Example output:
 
-```text
-T CPU ms: 30.47
-S disk bytes: 185126
 ```
+T_CPU_ms: 33.59
+S_disk_bytes: 129326
 
-Actual inference time depends on the hardware.
+
+```
 
 ### 2. Reproduce Training
 
-To train the model from scratch, arrange the DUTS training dataset as follows:
-
-```text
-datasets/
-└── DUTS-TR/
-    ├── DUTS-TR-Image/
-    └── DUTS-TR-Mask/
 ```
-
-Run:
-
-```bash
 python train.py
+
+
 ```
 
-The best checkpoint is saved under:
-
-```text
-checkpoints/best_model_192.pth
-```
+The best checkpoint is saved under `checkpoints/best_model_4.pth`.
 
 ### 3. Evaluation and Benchmarking
 
-The following scripts are provided:
-
-| Script | Description |
-|---|---|
-| `evaluate.py` | Evaluates the model on the validation split |
-| `evaluation_test.py` | Evaluates the model on DUTS-TE |
-| `benchmark.py` | Measures CPU inference performance |
-| `visualize.py` | Generates segmentation visualizations |
-| `prepare_captured.py` | Prepares personally captured images |
-
-Execute the evaluation scripts from the project root:
-
-```bash
+```
 python evaluate.py
 python evaluation_test.py
 python benchmark.py
+python prepare_captured.py
+python visualize.py
+
+
 ```
 
-For test-set evaluation, arrange DUTS-TE as follows:
+## Evaluation & Benchmark Performance
 
-```text
-datasets/
-└── DUTS-TE/
-    ├── DUTS-TE-Image/
-    └── DUTS-TE-Mask/
-```
+The combined quality score $Q$ is defined as:
 
----
-
-## 📊 Evaluation & Benchmark Performance
-
-The model is evaluated using the following metrics:
-
-- **mIoU:** Mean Intersection over Union, measuring pixel-level segmentation overlap.
-- **Boundary F1:** Measures the quality of predicted object boundaries.
-- **Q:** Combined segmentation quality score.
-
-The combined quality score is calculated as:
-
-\[
+$$
 Q = 0.70 \times \text{mIoU} + 0.30 \times \text{Boundary F1}
-\]
+$$
 
 ### 1. Segmentation Performance
 
-| Dataset | mIoU | Boundary F1 | Q |
-|---|---:|---:|---:|
-| DUTS Validation | 0.7558 | 0.3871 | 0.6452 |
-| DUTS Test | 0.6302 | 0.2882 | 0.5276 |
-| Captured Images | 0.7380 | 0.3987 | 0.6362 |
+| Dataset | Images | BG IoU | FG IoU | mIoU | Boundary F1 | Q | 
+| ----- | ----- | ----- | ----- | ----- | ----- | ----- | 
+| DUTS-TR Validation | 1,056 | 0.8565 | 0.6519 | 0.7542 | 0.4006 | 0.6481 | 
+| DUTS-TE Test | 5,019 | 0.8553 | 0.4273 | 0.6413 | 0.3045 | 0.5403 | 
+| Captured Images | 6 | 0.9039 | 0.5344 | 0.7192 | 0.3866 | 0.6194 | 
 
-### 2. Computational Performance
+### 2. Computational Efficiency (DUTS-TE Official Benchmark)
 
-| Metric | Result |
-|---|---:|
-| Model parameters | 29,617 |
-| Checkpoint size | 185,126 bytes |
-| Average CPU inference time | 45.88 ms |
-| Computational Efficiency Score (CES) | 0.42843 |
-
-The CPU benchmark measurements were obtained on the DUTS test dataset. Actual inference time may vary depending on the hardware and execution environment.
-
-Detailed experimental results, visual comparisons, and failure-case analysis are presented in `Report.pdf`.
-
----
-
-## 📝 Reproducibility Notes
-
-- Run scripts from the project root directory.
-- The supplied checkpoint enables inference without downloading the DUTS datasets.
-- DUTS-TR is required for training and DUTS-TE is required for test evaluation.
-- An NVIDIA GPU is not required for inference.
-- The model architecture is defined in `model.py`, while the trained parameters are provided in `checkpoints/best_model_192.pth`.
-- The detailed methodology, experimental analysis, and visual results are documented in `Report.pdf`.
+| Metric | Result | 
+| ----- | ----- | 
+| Model trainable parameters | 15,949 | 
+| Checkpoint size ($S_{\text{disk}}$) | 129,326 bytes (0.1233 MiB) | 
+| Average CPU inference time ($T_{\text{CPU}}$) | 25.2291 ms | 
+| Median CPU inference time | 31.2500 ms | 
+| Maximum CPU inference time | 62.5000 ms | 
+| Cost-Efficient Segmentation Score (CES) | **0.48408** | 

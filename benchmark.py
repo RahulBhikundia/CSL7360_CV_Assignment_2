@@ -1,9 +1,3 @@
-
-from model import SmallUNet
-import numpy as np
-import time
-import torch
-import cv2
 import os
 
 # Set thread limits before importing numerical libraries
@@ -11,6 +5,12 @@ os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+
+from model import SmallUNet
+import numpy as np
+import time
+import torch
+import cv2
 
 
 # --------------------------------------------------
@@ -45,6 +45,8 @@ model.load_state_dict(
 )
 
 model.eval()
+with torch.no_grad():
+    model = torch.jit.optimize_for_inference(torch.jit.trace(model, torch.randn(1, 3, 256, 256)))
 
 print("Model loaded successfully.")
 
